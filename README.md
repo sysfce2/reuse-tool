@@ -20,7 +20,7 @@ recommendations.
 - Source code: <https://github.com/fsfe/reuse-tool>
 - PyPI: <https://pypi.python.org/pypi/reuse>
 - REUSE: 3.3
-- Python: 3.8+
+- Python: 3.9+
 
 ## Table of contents
 
@@ -188,10 +188,11 @@ short summary:
 - `annotate` --- Add copyright and/or licensing information to the header of a
   file.
 - `download` --- Download the specified license into the `LICENSES/` directory.
-- `init` --- Set up the project for REUSE compliance.
 - `lint` --- Verify the project for REUSE compliance.
+- `lint-file` --- Verify REUSE compliance of individual files.
 - `spdx` --- Generate an SPDX Document of all files in the project.
 - `supported-licenses` --- Prints all licenses supported by REUSE.
+- `convert-dep5` --- Convert .reuse/dep5 to REUSE.toml.
 
 ### Example demo
 
@@ -266,6 +267,21 @@ repos:
     hooks:
       - id: reuse-lint-file
 ```
+
+### Shell completion
+
+In order to enable shell completion, you need to generate the shell completion
+script. You do this with `_REUSE_COMPLETE=bash_source reuse`. Replace `bash`
+with `zsh` or `fish` as needed, or any other shells supported by the
+Python`click` library. You can then source the output in your shell rc file,
+like so (e.g.`~/.bashrc`):
+
+```bash
+eval "$(_REUSE__COMPLETE=bash_source reuse)"
+```
+
+Alternatively, you can place the generated completion script in
+`${XDG_DATA_HOME}/bash-completion/completions/reuse`.
 
 ## Maintainers
 

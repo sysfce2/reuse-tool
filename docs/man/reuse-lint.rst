@@ -67,7 +67,8 @@ are the methods:
 
 - Placing tags in the header of the file.
 - Placing tags in a ``.license`` file adjacent to the file.
-- Putting the information in the ``REUSE.toml`` file.
+- Putting the information in a ``REUSE.toml`` file, which must be in an ancestor
+  directory relative to the file.
 - Putting the information in the ``.reuse/dep5`` file. (Deprecated)
 
 If a file is found that does not have copyright and/or license information
@@ -96,6 +97,6 @@ Options
 
   Output one line per error, prefixed by the file path.
 
-.. option:: -h, --help
+.. option:: --help
 
   Display help and exit.

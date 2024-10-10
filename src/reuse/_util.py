@@ -14,51 +14,25 @@
 
 """Misc. utilities for reuse."""
 
-import contextlib
 import logging
 import os
 import re
 import shutil
 import subprocess
-import sys
-from argparse import ArgumentTypeError
 from collections import Counter
-from difflib import SequenceMatcher
-from gettext import gettext as _
 from hashlib import sha1
 from inspect import cleandoc
 from itertools import chain
-from os import PathLike
-from pathlib import Path, PurePath
-from typing import (
-    IO,
-    Any,
-    BinaryIO,
-    Dict,
-    Iterator,
-    List,
-    Optional,
-    Set,
-    Type,
-    Union,
-    cast,
-)
+from pathlib import Path
+from typing import IO, Any, BinaryIO, Iterator, Optional, Union
 
-from boolean.boolean import Expression, ParseError
+from boolean.boolean import ParseError
 from license_expression import ExpressionError, Licensing
 
 from . import ReuseInfo, SourceType
-from ._licenses import ALL_NON_DEPRECATED_MAP
-from .comment import (
-    EXTENSION_COMMENT_STYLE_MAP_LOWERCASE,
-    FILENAME_COMMENT_STYLE_MAP_LOWERCASE,
-    CommentStyle,
-    UncommentableCommentStyle,
-    _all_style_classes,
-)
-
-# TODO: When removing Python 3.8 support, use PathLike[str]
-StrPath = Union[str, PathLike]
+from .comment import _all_style_classes  # TODO: This import is not ideal here.
+from .i18n import _
+from .types import StrPath
 
 GIT_EXE = shutil.which("git")
 HG_EXE = shutil.which("hg")
@@ -109,7 +83,7 @@ _CONTRIBUTOR_PATTERN = re.compile(
     r"^(.*?)SPDX-FileContributor:[ \t]+(.*?)" + _END_PATTERN, re.MULTILINE
 )
 # The keys match the relevant attributes of ReuseInfo.
-_SPDX_TAGS: Dict[str, re.Pattern] = {
+_SPDX_TAGS: dict[str, re.Pattern] = {
     "spdx_expressions": _LICENSE_IDENTIFIER_PATTERN,
     "contributor_lines": _CONTRIBUTOR_PATTERN,
 }
@@ -171,7 +145,7 @@ def setup_logging(level: int = logging.WARNING) -> None:
 
 
 def execute_command(
-    command: List[str],
+    command: list[str],
     logger: logging.Logger,
     cwd: Optional[StrPath] = None,
     **kwargs: Any,
@@ -251,9 +225,9 @@ def _determine_license_suffix_path(path: StrPath) -> Path:
     return Path(f"{path}.license")
 
 
-def _parse_copyright_year(year: Optional[str]) -> List[str]:
+def _parse_copyright_year(year: Optional[str]) -> list[str]:
     """Parse copyright years and return list."""
-    ret: List[str] = []
+    ret: list[str] = []
     if not year:
         return ret
     if re.match(r"\d{4}$", year):
@@ -273,29 +247,7 @@ def _contains_snippet(binary_file: BinaryIO) -> bool:
     return False
 
 
-def _get_comment_style(path: StrPath) -> Optional[Type[CommentStyle]]:
-    """Return value of CommentStyle detected for *path* or None."""
-    path = Path(path)
-    style = FILENAME_COMMENT_STYLE_MAP_LOWERCASE.get(path.name.lower())
-    if style is None:
-        style = cast(
-            Optional[Type[CommentStyle]],
-            EXTENSION_COMMENT_STYLE_MAP_LOWERCASE.get(path.suffix.lower()),
-        )
-    return style
-
-
-def _is_uncommentable(path: Path) -> bool:
-    """*path*'s extension has the UncommentableCommentStyle."""
-    return _get_comment_style(path) == UncommentableCommentStyle
-
-
-def _has_style(path: Path) -> bool:
-    """*path*'s extension has a CommentStyle."""
-    return _get_comment_style(path) is not None
-
-
-def merge_copyright_lines(copyright_lines: Set[str]) -> Set[str]:
+def merge_copyright_lines(copyright_lines: set[str]) -> set[str]:
     """Parse all copyright lines and merge identical statements making years
     into a range.
 
@@ -339,7 +291,7 @@ def merge_copyright_lines(copyright_lines: Set[str]) -> Set[str]:
                 break
 
         # get year range if any
-        years: List[str] = []
+        years: list[str] = []
         for copy in copyright_list:
             years += copy["year"]
 
@@ -362,7 +314,7 @@ def extract_reuse_info(text: str) -> ReuseInfo:
         ParseError: if an SPDX expression could not be parsed.
     """
     text = filter_ignore_block(text)
-    spdx_tags: Dict[str, Set[str]] = {}
+    spdx_tags: dict[str, set[str]] = {}
     for tag, pattern in _SPDX_TAGS.items():
         spdx_tags[tag] = set(find_spdx_tag(text, pattern))
     # License expressions and copyright matches are special cases.
@@ -538,117 +490,6 @@ def _checksum(path: StrPath) -> str:
     return file_sha1.hexdigest()
 
 
-class PathType:
-    """Factory for creating Paths"""
-
-    def __init__(
-        self,
-        mode: str = "r",
-        force_file: bool = False,
-        force_directory: bool = False,
-    ):
-        if mode in ("r", "r+", "w"):
-            self._mode = mode
-        else:
-            raise ValueError(f"mode='{mode}' is not valid")
-        self._force_file = force_file
-        self._force_directory = force_directory
-        if self._force_file and self._force_directory:
-            raise ValueError(
-                "'force_file' and 'force_directory' cannot both be True"
-            )
-
-    def _check_read(self, path: Path) -> None:
-        if path.exists() and os.access(path, os.R_OK):
-            if self._force_file and not path.is_file():
-                raise ArgumentTypeError(_("'{}' is not a file").format(path))
-            if self._force_directory and not path.is_dir():
-                raise ArgumentTypeError(
-                    _("'{}' is not a directory").format(path)
-                )
-            return
-        raise ArgumentTypeError(_("can't open '{}'").format(path))
-
-    def _check_write(self, path: Path) -> None:
-        if path.is_dir():
-            raise ArgumentTypeError(
-                _("can't write to directory '{}'").format(path)
-            )
-        if path.exists() and os.access(path, os.W_OK):
-            return
-        if not path.exists() and os.access(path.parent, os.W_OK):
-            return
-        raise ArgumentTypeError(_("can't write to '{}'").format(path))
-
-    def __call__(self, string: str) -> Path:
-        path = Path(string)
-
-        try:
-            if self._mode in ("r", "r+"):
-                self._check_read(path)
-            if self._mode in ("w", "r+"):
-                self._check_write(path)
-            return path
-        except OSError as error:
-            raise ArgumentTypeError(
-                _("can't read or write '{}'").format(path)
-            ) from error
-
-
-def spdx_identifier(text: str) -> Expression:
-    """argparse factory for creating SPDX expressions."""
-    try:
-        return _LICENSING.parse(text)
-    except (ExpressionError, ParseError) as error:
-        raise ArgumentTypeError(
-            _("'{}' is not a valid SPDX expression, aborting").format(text)
-        ) from error
-
-
-def similar_spdx_identifiers(identifier: str) -> List[str]:
-    """Given an incorrect SPDX identifier, return a list of similar ones."""
-    suggestions: List[str] = []
-    if identifier in ALL_NON_DEPRECATED_MAP:
-        return suggestions
-
-    for valid_identifier in ALL_NON_DEPRECATED_MAP:
-        distance = SequenceMatcher(
-            a=identifier.lower(), b=valid_identifier[: len(identifier)].lower()
-        ).ratio()
-        if distance > 0.75:
-            suggestions.append(valid_identifier)
-    suggestions = sorted(suggestions)
-
-    return suggestions
-
-
-def print_incorrect_spdx_identifier(
-    identifier: str, out: IO[str] = sys.stdout
-) -> None:
-    """Print out that *identifier* is not valid, and follow up with some
-    suggestions.
-    """
-    out.write(
-        _("'{}' is not a valid SPDX License Identifier.").format(identifier)
-    )
-    out.write("\n")
-
-    suggestions = similar_spdx_identifiers(identifier)
-    if suggestions:
-        out.write("\n")
-        out.write(_("Did you mean:"))
-        out.write("\n")
-        for suggestion in suggestions:
-            out.write(f"* {suggestion}\n")
-        out.write("\n")
-    out.write(
-        _(
-            "See <https://spdx.org/licenses/> for a list of valid "
-            "SPDX License Identifiers."
-        )
-    )
-
-
 def detect_line_endings(text: str) -> str:
     """Return one of '\n', '\r' or '\r\n' depending on the line endings used in
     *text*. Return os.linesep if there are no line endings.
@@ -663,15 +504,6 @@ def detect_line_endings(text: str) -> str:
 def cleandoc_nl(text: str) -> str:
     """Like :func:`inspect.cleandoc`, but with a newline at the end."""
     return cleandoc(text) + "\n"
-
-
-def is_relative_to(path: PurePath, target: PurePath) -> bool:
-    """Like Path.is_relative_to, but working for Python <3.9."""
-    # TODO: When Python 3.8 is dropped, remove this function.
-    with contextlib.suppress(ValueError):
-        path.relative_to(target)
-        return True
-    return False
 
 
 # REUSE-IgnoreEnd
