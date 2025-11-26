@@ -4,6 +4,7 @@
 # SPDX-FileCopyrightText: 2022 Florian Snow <florian@familysnow.net>
 # SPDX-FileCopyrightText: 2023 Maxim Cournoyer <maxim.cournoyer@gmail.com>
 # SPDX-FileCopyrightText: 2024 Rivos Inc.
+# SPDX-FileCopyrightText: 2025 Jan Gietzel <jan.gietzel@gmail.com>
 # SPDX-FileCopyrightText: © 2020 Liferay, Inc. <https://liferay.com>
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
@@ -774,6 +775,74 @@ class TestAnnotate:
             "Option '--copyright', '--license', or '--contributor' is required"
             in result.output
         )
+
+    def test_reuse_global_overriding(self, fake_repository_reuse_toml):
+        """Fail to add a header when there is overriding global REUSE info."""
+
+        python_file = fake_repository_reuse_toml / "doc/index.py"
+        python_file.write_text("pass")
+        expected = cleandoc(
+            """
+            pass
+            """
+        )
+        expected_output = (
+            "doc/index.py has overriding REUSE information according to global "
+            "licensing; skipping"
+        )
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "annotate",
+                "--license",
+                "GPL-3.0-or-later",
+                "--copyright",
+                "Jane Doe",
+                "--import-global",
+                "doc/index.py",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert expected_output in result.output
+        assert python_file.read_text() == expected
+
+    def test_reuse_global_skipping(self, fake_repository_reuse_toml):
+        """
+        Skip adding a header when there is overriding global REUSE info and
+        `--skip-existing` is used.
+        """
+
+        python_file = fake_repository_reuse_toml / "doc/index.py"
+        python_file.write_text("pass")
+        expected = cleandoc(
+            """
+            pass
+            """
+        )
+        expected_output = (
+            "doc/index.py already has REUSE information according to global "
+            "licensing; skipping."
+        )
+
+        result = CliRunner().invoke(
+            main,
+            [
+                "annotate",
+                "--license",
+                "GPL-3.0-or-later",
+                "--copyright",
+                "Jane Doe",
+                "--import-global",
+                "--skip-existing",
+                "doc/index.py",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert expected_output in result.output
+        assert python_file.read_text() == expected
 
     def test_template_simple(
         self, fake_repository, mock_date_today, template_simple_source

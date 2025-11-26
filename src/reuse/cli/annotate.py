@@ -9,6 +9,7 @@
 # SPDX-FileCopyrightText: 2022 Florian Snow <florian@familysnow.net>
 # SPDX-FileCopyrightText: 2022 Yaman Qalieh
 # SPDX-FileCopyrightText: 2024 Rivos Inc.
+# SPDX-FileCopyrightText: 2025 Jan Gietzel <jan.gietzel@gmail.com>
 # SPDX-FileCopyrightText: © 2020 Liferay, Inc. <https://liferay.com>
 # SPDX-FileCopyrightText: 2026 Lily A.N. <minekpo1@murena.io>
 #
@@ -21,12 +22,16 @@ import logging
 import os
 import sys
 from collections.abc import Collection, Iterable, Sequence
+from enum import Enum, auto
+from itertools import chain
 from pathlib import Path
-from typing import Any, cast
+from typing import IO, Any, List, NamedTuple, cast
 
 import click
 from jinja2 import Environment, FileSystemLoader, Template
 from jinja2.exceptions import TemplateNotFound
+
+from reuse.global_licensing import PrecedenceType
 
 from .._annotate import add_header_to_file
 from .._util import _determine_license_path, _determine_license_suffix_path
@@ -53,6 +58,89 @@ from .common import ClickObj, MutexOption, spdx_identifier
 from .main import main
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class SkipDecision(Enum):
+    """Decision whether to skip or process a file."""
+
+    SKIP = auto()
+    PROCESS = auto()
+
+
+class SkipReason(Enum):
+    """Reason for skipping a file."""
+
+    NO_SKIP = 0
+    GLOBAL_REUSE_INFO = 1
+    GLOBAL_OVERRIDING_INFO = 2
+
+
+class SkipResult(NamedTuple):
+    """Result of the skip decision."""
+
+    decision: SkipDecision
+    reason: SkipReason
+
+
+def should_skip_file(
+    path: Path,
+    project: Project,
+    import_global: bool,
+    skip_existing: bool,
+    out: IO[str] = sys.stdout,
+) -> SkipResult:
+    """
+    Determine whether a file should be skipped based on global reuse info.
+
+    Returns:
+        SkipResult: Named tuple with decision (SKIP/PROCESS) and reason.
+    """
+    if import_global and path_has_any_global_reuse_info(path, project):
+        if skip_existing:
+            out.write(
+                _(
+                    "{path} already has REUSE information according"
+                    " to global licensing; skipping.\n"
+                ).format(path=path)
+            )
+            return SkipResult(SkipDecision.SKIP, SkipReason.GLOBAL_REUSE_INFO)
+
+        if path_has_global_overriding_reuse_info(path, project):
+            out.write(
+                _(
+                    "{path} has overriding REUSE information"
+                    " according to global licensing; skipping.\n"
+                ).format(path=path)
+            )
+            return SkipResult(
+                SkipDecision.SKIP, SkipReason.GLOBAL_OVERRIDING_INFO
+            )
+
+    return SkipResult(SkipDecision.PROCESS, SkipReason.NO_SKIP)
+
+
+def _get_global_reuse_info_of(
+    path: Path, project: Project
+) -> dict[PrecedenceType, List[ReuseInfo]]:
+    """Return the global reuse info for the given path, grouped by precedence"""
+    if project.global_licensing is None:
+        raise click.UsageError(_("No global licensing information found."))
+    return project.global_licensing.reuse_info_of(path)
+
+
+def path_has_any_global_reuse_info(path: Path, project: Project) -> bool:
+    """Return whether there is any global reuse info for the given path."""
+    reuse_info_by_precedence = _get_global_reuse_info_of(path, project)
+    return any(chain.from_iterable(reuse_info_by_precedence.values()))
+
+
+def path_has_global_overriding_reuse_info(path: Path, project: Project) -> bool:
+    """
+    Return whether there is overriding global reuse info for the
+    given path.
+    """
+    reuse_info_by_precedence = _get_global_reuse_info_of(path, project)
+    return PrecedenceType.OVERRIDE in reuse_info_by_precedence
 
 
 def test_mandatory_option_required(
@@ -469,6 +557,14 @@ _HELP = (
         "instead of adding onto them."
     ),
 )
+@click.option(
+    "--import-global",
+    is_flag=True,
+    help=_(
+        "Loads REUSE.toml to verify existing REUSE information. (Useful "
+        "for calling with --skip-existing)"
+    ),
+)
 @click.argument(
     "paths",
     # TRANSLATORS: You may translate this. Please preserve capital letters.
@@ -497,6 +593,7 @@ def annotate(
     skip_unrecognised: bool,
     skip_existing: bool,
     replace_license: bool,
+    import_global: bool,
     paths: Sequence[Path],
 ) -> None:
     # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
@@ -518,6 +615,16 @@ def annotate(
 
     result = 0
     for path in paths:
+        skip_path = should_skip_file(
+            path, project, import_global, skip_existing, out=sys.stdout
+        )
+        if skip_path.reason == SkipReason.GLOBAL_OVERRIDING_INFO:
+            # Count as an error case, since a global overriding annotation will
+            # prevent local annotations from being applied.
+            result += 1
+        if skip_path.decision == SkipDecision.SKIP:
+            continue
+
         with path.open("rb") as fp:
             chunk = fp.read(HEURISTICS_CHUNK_SIZE)
         encoding = detect_encoding(chunk)
