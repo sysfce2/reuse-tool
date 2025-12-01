@@ -777,7 +777,10 @@ class TestAnnotate:
         )
 
     def test_reuse_global_overriding(self, fake_repository_reuse_toml):
-        """Fail to add a header when there is overriding global REUSE info."""
+        """
+        Skip and log when adding a header to a file that has an overriding
+        global REUSE annotation.
+        """
 
         python_file = fake_repository_reuse_toml / "doc/index.py"
         python_file.write_text("pass")
@@ -804,7 +807,7 @@ class TestAnnotate:
             ],
         )
 
-        assert result.exit_code == 1
+        assert result.exit_code == 0
         assert expected_output in result.output
         assert python_file.read_text() == expected
 

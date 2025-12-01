@@ -154,18 +154,21 @@ Other options
 
 .. option:: --skip-existing
 
-  Skip files that already contain REUSE information.
+  Skip a file if there is already REUSE information inside of it, or when
+  using in tandem with :option:`--import-global`, then also skip a file if
+  it has global annotations.
 
 .. option:: --import-global
 
   When specified, the global annotation defined in ``REUSE.toml`` is loaded to
-  identify existing annotations, which supports when used together with option
+  identify existing annotations, which supports when used in tandem with option
   :option:`--skip-existing`.
 
   .. Note::
-    If a global annotation with a precedence of :class:`override <reuse.global_licensing.PrecedenceType.OVERRIDE>` is found, the annotation
-    process will fail, because an overriding global annotation prevents any local
-    annotations from being applied.
+    If a global annotation with a precedence of 
+    :class:`override <reuse.global_licensing.PrecedenceType.OVERRIDE>` is found,
+    the annotation process will skip the file, because an overriding
+    global annotation prevents any local annotations from being applied.
 
 .. option:: --help
 
