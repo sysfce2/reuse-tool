@@ -16,11 +16,11 @@
 
 """Functions for the CLI portion of manipulating headers."""
 
-import itertools
 import logging
 import sys
+from collections.abc import Collection
 from pathlib import Path
-from typing import IO, cast
+from typing import IO, Literal, cast
 
 from jinja2 import Environment, FileSystemLoader, Template
 from jinja2.exceptions import TemplateNotFound
@@ -80,7 +80,9 @@ def add_header_to_file(
     newline: str = "\n",
     force_multi: bool = False,
     skip_existing: bool = False,
-    skip_global: bool = False,
+    skip_global_precedences: (
+        Collection[Literal["aggregate", "closest", "override"]] | None
+    ) = None,
     skip_unrecognised: bool = False,
     fallback_dot_license: bool = False,
     merge_copyrights: bool = False,
@@ -125,21 +127,26 @@ def add_header_to_file(
         )
         out.write("\n")
         return result
-    if skip_global and global_licensing is not None:
+    if skip_global_precedences is None:
+        skip_global_precedences = []
+    if skip_global_precedences and global_licensing is not None:
         global_info_dicts = global_licensing.reuse_info_of(
             relative_from_root(Path(path), global_licensing.root)
         )
-        global_infos = itertools.chain.from_iterable(global_info_dicts.values())
-        for global_info in global_infos:
-            if global_info.contains_info():
-                out.write(
-                    _(
-                        "Skipped file '{path}' which is already covered by"
-                        " '{source}'"
-                    ).format(path=path, source=global_info.source_path)
-                )
-                out.write("\n")
-                return result
+        for precedence, global_infos in global_info_dicts.items():
+            for global_info in global_infos:
+                if (
+                    global_info.contains_info()
+                    and precedence.value in skip_global_precedences
+                ):
+                    out.write(
+                        _(
+                            "Skipped file '{path}' which is already covered by"
+                            " '{source}'"
+                        ).format(path=path, source=global_info.source_path)
+                    )
+                    out.write("\n")
+                    return result
 
     try:
         if replace:

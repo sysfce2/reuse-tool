@@ -23,7 +23,7 @@ import os
 import sys
 from collections.abc import Collection, Iterable, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import click
 from jinja2 import Environment, FileSystemLoader, Template
@@ -297,6 +297,7 @@ _STYLE_MUTEX = [
     "fallback_dot_license",
     "skip_unrecognised",
 ]
+_SKIP_GLOBAL_MUTEX = ["skip_global", "skip_precedence"]
 
 _HELP = (
     _("Add copyright and licensing into the headers of files.")
@@ -472,8 +473,21 @@ _HELP = (
 )
 @click.option(
     "--skip-global",
+    cls=MutexOption,
+    mutually_exclusive=_SKIP_GLOBAL_MUTEX,
     is_flag=True,
     help=_("Skip files that are covered by REUSE.toml or .reuse/dep5."),
+)
+@click.option(
+    "--skip-precedence",
+    cls=MutexOption,
+    mutually_exclusive=_SKIP_GLOBAL_MUTEX,
+    type=click.Choice(["aggregate", "closest", "override"]),
+    multiple=True,
+    help=_(
+        "Skip files that are covered by REUSE.toml or .reuse/dep5 with a"
+        " specific precedence level, repeatable."
+    ),
 )
 @click.argument(
     "paths",
@@ -504,6 +518,7 @@ def annotate(
     skip_existing: bool,
     replace_license: bool,
     skip_global: bool,
+    skip_precedence: Collection[Literal["aggregate", "closest", "override"]],
     paths: Sequence[Path],
 ) -> None:
     # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
@@ -556,7 +571,11 @@ def annotate(
             newline=newline,
             force_multi=multi_line,
             skip_existing=skip_existing,
-            skip_global=skip_global,
+            skip_global_precedences=(
+                ["aggregate", "closest", "override"]
+                if skip_global
+                else skip_precedence
+            ),
             skip_unrecognised=skip_unrecognised,
             fallback_dot_license=fallback_dot_license,
             merge_copyrights=merge_copyrights,
