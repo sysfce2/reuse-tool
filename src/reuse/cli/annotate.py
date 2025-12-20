@@ -22,15 +22,12 @@ import logging
 import os
 import sys
 from collections.abc import Collection, Iterable, Sequence
-from itertools import chain
 from pathlib import Path
-from typing import IO, Any, cast
+from typing import Any, cast
 
 import click
 from jinja2 import Environment, FileSystemLoader, Template
 from jinja2.exceptions import TemplateNotFound
-
-from reuse.global_licensing import PrecedenceType
 
 from .._annotate import add_header_to_file
 from .._util import _determine_license_path, _determine_license_suffix_path
@@ -57,54 +54,6 @@ from .common import ClickObj, MutexOption, spdx_identifier
 from .main import main
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def should_skip_file(
-    path: Path,
-    reuse_info: ReuseInfo,
-    project: Project,
-    import_global: bool,
-    skip_existing: bool,
-    out: IO[str] = sys.stdout,
-) -> bool:
-    """
-    Determine whether a file should be skipped based on global reuse info.
-
-    Returns:
-        SkipResult: Named tuple with decision (SKIP/PROCESS) and reason.
-    """
-    if not import_global:
-        return False
-
-    if project.global_licensing is None:
-        raise click.UsageError(_("No global licensing information found."))
-    global_license_info = project.global_licensing.reuse_info_of(path)
-
-    combined_global_license_infos = chain.from_iterable(
-        global_license_info.values()
-    )
-    path_has_any_global_reuse_info = any(combined_global_license_infos)
-
-    if skip_existing and path_has_any_global_reuse_info:
-        out.write(
-            _(
-                "{path} already has REUSE information according"
-                " to global licensing; skipping.\n"
-            ).format(path=path)
-        )
-        return True
-
-    if PrecedenceType.OVERRIDE in global_license_info:
-        if reuse_info not in global_license_info[PrecedenceType.OVERRIDE]:
-            out.write(
-                _(
-                    "{path} has overriding REUSE information"
-                    " according to global licensing; skipping.\n"
-                ).format(path=path)
-            )
-            return True
-
-    return False
 
 
 def test_mandatory_option_required(
@@ -522,12 +471,9 @@ _HELP = (
     ),
 )
 @click.option(
-    "--import-global",
+    "--skip-global",
     is_flag=True,
-    help=_(
-        "Loads REUSE.toml to verify existing REUSE information. (Useful "
-        "for calling with --skip-existing)"
-    ),
+    help=_("Skip files that are covered by REUSE.toml or .reuse/dep5."),
 )
 @click.argument(
     "paths",
@@ -557,7 +503,7 @@ def annotate(
     skip_unrecognised: bool,
     skip_existing: bool,
     replace_license: bool,
-    import_global: bool,
+    skip_global: bool,
     paths: Sequence[Path],
 ) -> None:
     # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
@@ -579,16 +525,6 @@ def annotate(
 
     result = 0
     for path in paths:
-        if should_skip_file(
-            path,
-            reuse_info,
-            project,
-            import_global,
-            skip_existing,
-            out=sys.stdout,
-        ):
-            continue
-
         with path.open("rb") as fp:
             chunk = fp.read(HEURISTICS_CHUNK_SIZE)
         encoding = detect_encoding(chunk)
@@ -615,10 +551,12 @@ def annotate(
             template=template,
             template_is_commented=commented,
             style=style,
+            global_licensing=project.global_licensing,
             encoding=encoding,
             newline=newline,
             force_multi=multi_line,
             skip_existing=skip_existing,
+            skip_global=skip_global,
             skip_unrecognised=skip_unrecognised,
             fallback_dot_license=fallback_dot_license,
             merge_copyrights=merge_copyrights,

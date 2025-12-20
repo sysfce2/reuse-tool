@@ -776,76 +776,64 @@ class TestAnnotate:
             in result.output
         )
 
-    def test_reuse_global_overriding(self, fake_repository_reuse_toml):
-        """
-        Skip and log when adding a header to a file that has an overriding
-        global REUSE annotation.
-        """
+    def test_skip_global_reuse_toml(
+        self, fake_repository_reuse_toml, mock_date_today
+    ):
+        """Skip files which are covered by REUSE.toml."""
+        skip_file = fake_repository_reuse_toml / "doc/index.py"
+        skip_file.write_text("pass")
 
-        python_file = fake_repository_reuse_toml / "doc/index.py"
-        python_file.write_text("pass")
-        expected = cleandoc(
-            """
-            pass
-            """
-        )
-        expected_output = (
-            "doc/index.py has overriding REUSE information according to global "
-            "licensing; skipping"
-        )
+        other_file = fake_repository_reuse_toml / "foo.py"
+        other_file.write_text("pass")
 
         result = CliRunner().invoke(
             main,
             [
                 "annotate",
-                "--license",
-                "GPL-3.0-or-later",
                 "--copyright",
                 "Jane Doe",
-                "--import-global",
+                "--skip-global",
+                "foo.py",
                 "doc/index.py",
             ],
         )
 
         assert result.exit_code == 0
-        assert expected_output in result.output
-        assert python_file.read_text() == expected
-
-    def test_reuse_global_skipping(self, fake_repository_reuse_toml):
-        """
-        Skip adding a header when there is overriding global REUSE info and
-        `--skip-existing` is used.
-        """
-
-        python_file = fake_repository_reuse_toml / "doc/index.py"
-        python_file.write_text("pass")
-        expected = cleandoc(
+        assert (
+            "Skipped file 'doc/index.py' which is already covered by"
+            " 'REUSE.toml'"
+        ) in result.stdout
+        assert skip_file.read_text() == "pass"
+        assert other_file.read_text() == cleandoc(
             """
+            # SPDX-FileCopyrightText: 2018 Jane Doe
+
             pass
             """
         )
-        expected_output = (
-            "doc/index.py already has REUSE information according to global "
-            "licensing; skipping."
-        )
+
+    def test_skip_global_reuse_dep5(self, fake_repository_dep5):
+        """Skip files which are covered by .reuse/dep5."""
+        skip_file = fake_repository_dep5 / "doc/index.py"
+        skip_file.write_text("pass")
 
         result = CliRunner().invoke(
             main,
             [
                 "annotate",
-                "--license",
-                "GPL-3.0-or-later",
                 "--copyright",
                 "Jane Doe",
-                "--import-global",
-                "--skip-existing",
+                "--skip-global",
                 "doc/index.py",
             ],
         )
 
         assert result.exit_code == 0
-        assert expected_output in result.output
-        assert python_file.read_text() == expected
+        assert result.stdout == (
+            "Skipped file 'doc/index.py' which is already covered by"
+            " '.reuse/dep5'\n"
+        )
+        assert skip_file.read_text() == "pass"
 
     def test_template_simple(
         self, fake_repository, mock_date_today, template_simple_source
