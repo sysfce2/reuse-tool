@@ -1157,8 +1157,8 @@ class TestNestedReuseTOMLReuseInfoOf:
             ],
         }
 
-    def test_toml_precedence(self):
-        """If a precedence is set to toml, ignore deeper TOMLs."""
+    def test_override_precedence(self):
+        """If a precedence is set to override, ignore deeper TOMLs."""
         outer = ReuseTOML(
             "REUSE.toml",
             Path("."),
@@ -1200,9 +1200,9 @@ class TestNestedReuseTOMLReuseInfoOf:
             ]
         }
 
-    def test_toml_and_aggregate(self):
-        """If the top TOML says aggregate and a deeper TOML has precedence toml,
-        aggregate accordingly.
+    def test_double_override(self):
+        """If two TOMLs declare precedence override, the override which is
+        closest to root takes precedence.
         """
         outer = ReuseTOML(
             "REUSE.toml",
@@ -1210,48 +1210,80 @@ class TestNestedReuseTOMLReuseInfoOf:
             1,
             [
                 AnnotationsItem(
-                    "foo/bar/**",
-                    precedence=PrecedenceType.AGGREGATE,
+                    "src/**",
+                    precedence=PrecedenceType.OVERRIDE,
                     copyright_notices={"Copyright Jane Doe"},
                     spdx_expressions={"MIT"},
                 )
             ],
         )
-        mid = ReuseTOML(
-            "foo/REUSE.toml",
-            Path("."),
-            1,
-            [
-                AnnotationsItem(
-                    "bar/**",
-                    precedence=PrecedenceType.OVERRIDE,
-                    copyright_notices={"Copyright Alice"},
-                    spdx_expressions={"0BSD"},
-                )
-            ],
-        )
         inner = ReuseTOML(
-            "foo/bar/REUSE.toml",
+            "src/REUSE.toml",
             Path("."),
             1,
             [
                 AnnotationsItem(
                     "foo.py",
                     precedence=PrecedenceType.OVERRIDE,
-                    copyright_notices={"Copyright Bob"},
-                    spdx_expressions={"CC0-1.0"},
+                    copyright_notices={"Copyright Alice"},
+                    spdx_expressions={"0BSD"},
                 )
             ],
         )
-        toml = NestedReuseTOML(".", Path("."), [outer, mid, inner])
-        assert toml.reuse_info_of("foo/bar/foo.py") == {
+        toml = NestedReuseTOML(".", Path("."), [outer, inner])
+        assert toml.reuse_info_of("src/foo.py") == {
+            PrecedenceType.OVERRIDE: [
+                ReuseInfo(
+                    spdx_expressions={SpdxExpression("MIT")},
+                    copyright_notices={
+                        CopyrightNotice.from_string("Copyright Jane Doe")
+                    },
+                    path="src/foo.py",
+                    source_path="REUSE.toml",
+                    source_type=SourceType.REUSE_TOML,
+                ),
+            ]
+        }
+
+    def test_override_and_aggregate(self):
+        """If the top TOML says aggregate and a deeper TOML has precedence
+        override, aggregate accordingly.
+        """
+        outer = ReuseTOML(
+            "REUSE.toml",
+            Path("."),
+            1,
+            [
+                AnnotationsItem(
+                    "foo/**",
+                    precedence=PrecedenceType.AGGREGATE,
+                    copyright_notices={"Copyright Jane Doe"},
+                    spdx_expressions={"MIT"},
+                )
+            ],
+        )
+        inner = ReuseTOML(
+            "foo/REUSE.toml",
+            Path("."),
+            1,
+            [
+                AnnotationsItem(
+                    "foo.py",
+                    precedence=PrecedenceType.OVERRIDE,
+                    copyright_notices={"Copyright Alice"},
+                    spdx_expressions={"0BSD"},
+                )
+            ],
+        )
+        toml = NestedReuseTOML(".", Path("."), [outer, inner])
+        assert toml.reuse_info_of("foo/foo.py") == {
             PrecedenceType.AGGREGATE: [
                 ReuseInfo(
                     spdx_expressions={SpdxExpression("MIT")},
                     copyright_notices={
                         CopyrightNotice.from_string("Copyright Jane Doe")
                     },
-                    path="foo/bar/foo.py",
+                    path="foo/foo.py",
                     source_path="REUSE.toml",
                     source_type=SourceType.REUSE_TOML,
                 ),
@@ -1262,7 +1294,7 @@ class TestNestedReuseTOMLReuseInfoOf:
                     copyright_notices={
                         CopyrightNotice.from_string("Copyright Alice")
                     },
-                    path="foo/bar/foo.py",
+                    path="foo/foo.py",
                     source_path="foo/REUSE.toml",
                     source_type=SourceType.REUSE_TOML,
                 ),
