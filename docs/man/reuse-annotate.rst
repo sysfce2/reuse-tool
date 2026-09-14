@@ -134,6 +134,10 @@ Other options
   Instead of replacing the first header in the file which contains copyright and
   licensing information, keep it and create a new header at the top.
 
+.. option:: --replace-license
+
+  Replace existing SPDX-License-Identifiers, instead of adding onto them.
+
 .. option:: --force-dot-license
 
   Always write a .license file instead of trying to write into the file itself.
@@ -147,10 +151,6 @@ Other options
 
   Instead of aborting when a file extension does not have an associated comment
   style, skip those files.
-
-.. option:: --replace-license
-
-  Replace existing SPDX-License-Identifiers, instead of adding onto them.
 
 .. option:: --skip-existing
 

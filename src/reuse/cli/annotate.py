@@ -251,19 +251,6 @@ def get_years(year: str | None, exclude_year: bool) -> tuple[YearRange, ...]:
     return result
 
 
-def verify_no_replace_nand_replace_license(
-    no_replace: bool, replace_license: bool
-) -> None:
-    """
-    warn the user if both --no-replace and --replace-license are provided
-      (--no-replace overrides --replace-license)
-    """
-    if no_replace and replace_license:
-        raise click.UsageError(
-            _("'--replace-license' and '--no-replace' cannot be used together.")
-        )
-
-
 def get_reuse_info(
     copyrights: Collection[str],
     licenses: Collection[SpdxExpression],
@@ -297,6 +284,7 @@ _STYLE_MUTEX = [
     "fallback_dot_license",
     "skip_unrecognised",
 ]
+_REPLACE_MUTEX = ["no_replace", "replace_license"]
 _SKIP_GLOBAL_MUTEX = ["skip_global", "skip_precedence"]
 
 _HELP = (
@@ -428,8 +416,20 @@ _HELP = (
 )
 @click.option(
     "--no-replace",
+    cls=MutexOption,
+    mutually_exclusive=_REPLACE_MUTEX,
     is_flag=True,
     help=_("Do not replace the first header in the file; just add a new one."),
+)
+@click.option(
+    "--replace-license",
+    cls=MutexOption,
+    mutually_exclusive=_REPLACE_MUTEX,
+    is_flag=True,
+    help=_(
+        "Replace existing SPDX-License-Identifiers,"
+        " instead of adding onto them."
+    ),
 )
 @click.option(
     "--force-dot-license",
@@ -462,14 +462,6 @@ _HELP = (
     "--skip-existing",
     is_flag=True,
     help=_("Skip files that already contain REUSE information."),
-)
-@click.option(
-    "--replace-license",
-    is_flag=True,
-    help=_(
-        "Replace existing SPDX-License-Identifiers, "
-        "instead of adding onto them."
-    ),
 )
 @click.option(
     "--skip-global",
@@ -512,11 +504,11 @@ def annotate(
     multi_line: bool,
     recursive: bool,
     no_replace: bool,
+    replace_license: bool,
     force_dot_license: bool,
     fallback_dot_license: bool,
     skip_unrecognised: bool,
     skip_existing: bool,
-    replace_license: bool,
     skip_global: bool,
     skip_precedence: Collection[Literal["aggregate", "closest", "override"]],
     paths: Sequence[Path],
@@ -536,7 +528,6 @@ def annotate(
     reuse_info = get_reuse_info(
         copyrights, licenses, contributors, copyright_prefix, years_tuple
     )
-    verify_no_replace_nand_replace_license(no_replace, replace_license)
 
     result = 0
     for path in paths:

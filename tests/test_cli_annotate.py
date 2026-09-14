@@ -2274,9 +2274,8 @@ class TestMultipleLicense:
         assert result.exit_code == 0
         assert simple_file.read_text() == expected
 
-    def test_replace_license_and_no_replace(self, fake_repository):
-        """Ensure a usage error is created when both --replace-license and
-        --no-replace are used."""
+    def test_replace_license_no_replace_mutex(self, fake_repository):
+        """--replace-license and --no-replace are mutually exclusive."""
         simple_file = fake_repository / "foo.py"
         simple_file.write_text(
             cleandoc(
@@ -2302,11 +2301,8 @@ class TestMultipleLicense:
             ],
         )
 
-        assert result.exit_code > 0
-        assert (
-            "Error: '--replace-license' and"
-            " '--no-replace' cannot be used together."
-        ) in result.output
+        assert result.exit_code != 0
+        assert "mutually exclusive with" in result.output
 
     def test_replace_license_and_dot_license(self, fake_repository):
         """Test --replace-license works with --force-dot-license"""
